@@ -132,5 +132,103 @@ namespace AgendaSalud.AuthService.Application.Services
             return hashOfInput == storedHash;
         }
 
+        public async Task<AuthResponseDto> GetCurrentUserAsync(string token)
+        {
+            try
+            {
+                var principal = _jwtGenerator.ValidateToken(token);
+
+                if (principal == null)
+                {
+                    throw new TaskCanceledException("Token inválido");
+                }
+
+                // Extraer el UserId del token como Guid
+                var userIdClaim = principal.FindFirst("UserId")?.Value;
+
+                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
+                {
+                    throw new TaskCanceledException("Token no contiene información válida del usuario");
+                }
+
+                // Buscar el usuario con Guid
+                var users = await _UserRepository.QueryAsync(u => u.Id == userId, includeProperties: "Role");
+
+                if (!users.Any())
+                {
+                    throw new TaskCanceledException("Usuario no encontrado");
+                }
+
+                var user = users.First();
+
+                return new AuthResponseDto
+                {
+                    UserId = user.Id,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    Role = user.Role.Name,
+                    Token = token,
+                    ExpiresAt = DateTime.UtcNow.AddHours(2)
+                };
+            }
+            catch
+            {
+                throw;
+            }
+        }
+        public async Task<TokenValidationDto> ValidateTokenAsync(string token)
+        {
+            try
+            {
+                // Validar el token usando el servicio JWT
+                var principal = _jwtGenerator.ValidateToken(token);
+
+                if (principal == null)
+                {
+                    return new TokenValidationDto
+                    {
+                        IsValid = false,
+                        Email = string.Empty,
+                        Role = string.Empty,
+                        ExpiresAt = DateTime.MinValue
+                    };
+                }
+
+                // Extraer información del token
+                var userIdClaim = principal.FindFirst("UserId")?.Value;
+                var emailClaim = principal.FindFirst("Email")?.Value;
+                var roleClaim = principal.FindFirst("Role")?.Value;
+                var expClaim = principal.FindFirst("exp")?.Value;
+
+                // Convertir la fecha de expiración
+                DateTime expiresAt = DateTime.MinValue;
+                if (!string.IsNullOrEmpty(expClaim) && long.TryParse(expClaim, out long exp))
+                {
+                    expiresAt = DateTimeOffset.FromUnixTimeSeconds(exp).DateTime;
+                }
+
+                // Verificar si el token ha expirado
+                bool isValid = expiresAt > DateTime.UtcNow;
+
+                return new TokenValidationDto
+                {
+                    IsValid = isValid,
+                    UserId = int.TryParse(userIdClaim, out int userId) ? userId : 0,
+                    Email = emailClaim ?? string.Empty,
+                    Role = roleClaim ?? string.Empty,
+                    ExpiresAt = expiresAt
+                };
+            }
+            catch
+            {
+                return new TokenValidationDto
+                {
+                    IsValid = false,
+                    Email = string.Empty,
+                    Role = string.Empty,
+                    ExpiresAt = DateTime.MinValue
+                };
+            }
+        }
     }
 }

@@ -6,5 +6,7 @@ namespace AgendaSalud.AuthService.Application.Interfaces
     {
         Task<AuthResponseDto> RegisterAsync(RegisterUserDto dto);
         Task<AuthResponseDto> LoginAsync(LoginUserDto dto);
+        Task<AuthResponseDto> GetCurrentUserAsync(string token);
+        Task<TokenValidationDto> ValidateTokenAsync(string token);
     }
 }

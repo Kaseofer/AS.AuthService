@@ -42,6 +42,34 @@ namespace AgendaSalud.AuthService.Application.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
+        public ClaimsPrincipal ValidateToken(string token)
+        {
+            try
+            {
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var key = Encoding.UTF8.GetBytes(_config.Key);
+
+                var validationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(key),
+                    ValidateIssuer = true,
+                    ValidIssuer = _config.Issuer,
+                    ValidateAudience = true,
+                    ValidAudience = _config.Audience,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
+
+                var principal = tokenHandler.ValidateToken(token, validationParameters, out SecurityToken validatedToken);
+                return principal;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public Guid? ValidateTokenAndGetUserId(string token)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
