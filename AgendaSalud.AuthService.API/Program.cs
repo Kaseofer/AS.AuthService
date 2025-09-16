@@ -71,11 +71,11 @@ try
     var app = builder.Build();
 
     Console.WriteLine("Configuring pipeline...");
-    if (app.Environment.IsDevelopment())
-    {
+    /*if (app.Environment.IsDevelopment())
+    {*/
         app.UseSwagger();
         app.UseSwaggerUI();
-    }
+   // }
 
     app.UseCors("AllowAllOrigins");
     app.UseHttpsRedirection();
