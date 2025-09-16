@@ -71,37 +71,31 @@ try
     var app = builder.Build();
 
     Console.WriteLine("Configuring pipeline...");
-    /*if (app.Environment.IsDevelopment())
-    {*/
-        app.UseSwagger();
-        app.UseSwaggerUI();
-   // }
 
+
+    app.UseSwagger();
+    app.UseSwaggerUI();
     app.UseCors("AllowAllOrigins");
-    app.UseHttpsRedirection();
+
+    // Comentar HTTPS redirect para Railway
+    // app.UseHttpsRedirection();
+
+    app.UseAuthentication();  // AGREGAR ESTO
     app.UseAuthorization();
     app.MapControllers();
 
-    Console.WriteLine("Starting seeding...");
-    // MOVER SEEDING A TRY-CATCH SEPARADO
-    try
-    {
-        using var scope = app.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<AuthenticationDbContext>();
-        await RoleSeeder.SeedAsync(dbContext);
-        Console.WriteLine("Seeding completed successfully");
-    }
-    catch (Exception seedEx)
-    {
-        Console.WriteLine($"Seeding failed: {seedEx.Message}");
-        // No fallar la app por seeding
-    }
+    // Configurar puerto para Railway
+    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+    app.Urls.Add($"http://0.0.0.0:{port}");
 
-    Console.WriteLine("Starting application...");
+    Console.WriteLine("Starting seeding...");
+    // ... resto del código de seeding
+
+    Console.WriteLine($"Starting application on port {port}...");
+
     app.Run();
 }
-catch (Exception ex)
-{
+catch(Exception ex) {
     Console.WriteLine($"CRITICAL ERROR: {ex.GetType().Name}");
     try { Console.WriteLine($"Message: {ex.Message}"); } catch { }
     try { Console.WriteLine($"Inner: {ex.InnerException?.Message}"); } catch { }
