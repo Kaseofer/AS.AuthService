@@ -1,7 +1,5 @@
-using AgendaSalud.AuthService.API.Common;
-using AgendaSalud.AuthService.Application.Interfaces;
 using AgendaSalud.AuthService.Application.IOC;
-using AgendaSalud.AuthService.Application.Services;
+using AgendaSalud.AuthService.Application.Settings;
 using AgendaSalud.AuthService.Infrastructure.IOC;
 using AgendaSalud.AuthService.Infrastructure.Logger;
 using AgendaSalud.AuthService.Infrastructure.Persistence.Context;

@@ -1,5 +1,5 @@
-﻿using AgendaSalud.AuthService.Application.Common;
-using AgendaSalud.AuthService.Application.Interfaces;
+﻿using AgendaSalud.AuthService.Application.Interfaces;
+using AgendaSalud.AuthService.Application.Settings;
 using AgendaSalud.AuthService.Domain.Entities;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;

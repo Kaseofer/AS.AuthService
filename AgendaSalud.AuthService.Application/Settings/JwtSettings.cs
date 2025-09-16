@@ -1,4 +1,4 @@
-﻿namespace AgendaSalud.AuthService.Application.Common
+﻿namespace AgendaSalud.AuthService.Application.Settings
 {
     public class JwtSettings
     {
