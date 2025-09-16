@@ -213,7 +213,7 @@ namespace AgendaSalud.AuthService.Application.Services
                 return new TokenValidationDto
                 {
                     IsValid = isValid,
-                    UserId = int.TryParse(userIdClaim, out int userId) ? userId : 0,
+                    UserId = Guid.TryParse(userIdClaim, out Guid userId) ? userId : Guid.Empty,
                     Email = emailClaim ?? string.Empty,
                     Role = roleClaim ?? string.Empty,
                     ExpiresAt = expiresAt
