@@ -10,5 +10,5 @@ RUN dotnet publish "AgendaSalud.AuthService.API/AgendaSalud.AuthService.API.cspr
 
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "AgendaSalud.AuthService.API.dll"]
