@@ -6,18 +6,41 @@ using AgendaSalud.AuthService.Infrastructure.Persistence.Context;
 using AgendaSalud.AuthService.Infrastructure.Persistence.Seeders;
 using Microsoft.EntityFrameworkCore;
 
+
+// Al principio de Program.cs, antes de crear el builder
+Console.WriteLine("=== DEBUGGING STARTUP ===");
+Console.WriteLine($"JWT Key configured: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Jwt__Key"))}");
+Console.WriteLine($"DB Connection configured: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ConnectionStrings__AgendaSaludAthentication"))}");
+Console.WriteLine($"Google Client ID configured: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Authentication__Google__ClientId"))}");
+
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddDbContext<AuthenticationDbContext>(options =>
+try
 {
-    var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
-        ?? builder.Configuration.GetConnectionString("AgendaSaludAthentication");
+    Console.WriteLine("Configuring services...");
 
-    options.UseNpgsql(connectionString)
-           .UseSnakeCaseNamingConvention();
-});
+    // Tu configuración actual de servicios
+    builder.Services.AddDbContext<AuthenticationDbContext>(options =>
+    {
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__AgendaSaludAthentication")
+            ?? builder.Configuration.GetConnectionString("AgendaSaludAthentication");
+        Console.WriteLine($"Using connection string: {!string.IsNullOrEmpty(connectionString)}");
+        options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
+    });
+
+    Console.WriteLine("DbContext configured successfully");
+
+    // Resto de servicios...
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"ERROR configuring services: {ex.Message}");
+    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+    throw;
+}
 
 //
 builder.Configuration.AddEnvironmentVariables();
