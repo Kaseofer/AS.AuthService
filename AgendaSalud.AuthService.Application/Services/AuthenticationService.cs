@@ -11,9 +11,9 @@ namespace AgendaSalud.AuthService.Application.Services
         private readonly IGenericRepository<Role> _RoleRepository;
         private readonly IGenericRepository<User> _UserRepository;
 
-        private readonly IJwtGenerator _jwtGenerator;
+        private readonly IJwtGeneratorService _jwtGenerator;
 
-        public AuthenticationService(IGenericRepository<Role> roleRepository,IGenericRepository<User> userRepository, IJwtGenerator jwtGenerator)
+        public AuthenticationService(IGenericRepository<Role> roleRepository,IGenericRepository<User> userRepository, IJwtGeneratorService jwtGenerator)
         {
             
             _RoleRepository = roleRepository;

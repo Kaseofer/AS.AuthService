@@ -1,11 +1,9 @@
 ﻿using AgendaSalud.AuthService.Application.Common;
 using AgendaSalud.AuthService.Application.Interfaces;
 using AgendaSalud.AuthService.Domain.Entities;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
-using System.Runtime;
 using System.Security.Claims;
 using System.Text;
 

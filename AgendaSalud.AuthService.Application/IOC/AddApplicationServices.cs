@@ -16,7 +16,7 @@ namespace AgendaSalud.AuthService.Application.IOC
             // Pacientes
 
 
-            services.AddSingleton<IJwtGenerator, JwtGenerator>();
+            services.AddSingleton<IJwtGeneratorService, JwtGeneratorService>();
 
             services.AddScoped<IAuthenticationService, AuthenticationService>();
 
