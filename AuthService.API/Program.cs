@@ -131,8 +131,11 @@ try
     builder.Services.AddSingleton(typeof(IAppLogger<>), typeof(FileLogger<>));
 
     Console.WriteLine("Adding application services...");
+
     builder.Services.AddInfrastructureLayerService();
+    Console.WriteLine($"Infrastructure services registered. Total services: {builder.Services.Count}");
     builder.Services.AddApplicationLayerService();
+    Console.WriteLine($"Application services registered. Total services: {builder.Services.Count}");
 
     Console.WriteLine("Adding authentication...");
    /* builder.Services.AddAuthentication()
