@@ -5,6 +5,7 @@ using AgendaSalud.AuthService.Application.Settings;
 using AgendaSalud.AuthService.Infrastructure.IOC;
 using AgendaSalud.AuthService.Infrastructure.Logger;
 using AgendaSalud.AuthService.Infrastructure.Persistence.Context;
+using AgendaSalud.AuthService.Infrastructure.Persistence.Seeders;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -186,7 +187,7 @@ try
         app.UseHttpsRedirection();
     }
 
-    app.UseAuthentication();
+   // app.UseAuthentication();
     app.UseAuthorization();
 
     // HEALTH CHECK ENDPOINTS
@@ -226,7 +227,22 @@ try
     app.MapControllers();
 
     Console.WriteLine("Starting seeding...");
-    // Tu código de seeding aquí...
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AuthenticationDbContext>();
+        // Si tienes el RoleSeeder, descomenta esta línea:
+        await RoleSeeder.SeedAsync(dbContext);
+        Console.WriteLine("Seeding completed successfully");
+    }
+    catch (Exception seedEx)
+    {
+        Console.WriteLine($"Seeding failed: {seedEx.Message}");
+        // No fallar la app por seeding
+    }
+
+
+
 
     if (app.Environment.IsDevelopment())
     {

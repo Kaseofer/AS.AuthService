@@ -10,6 +10,7 @@ public static class RoleSeeder
     {
         var predefinedRoles = new[]
         {
+            new Role { Name = "Admin", Description = "Administrador del Sistema" },
             new Role { Name = "Patient", Description = "Usuario que solicita turnos y servicios médicos" },
             new Role { Name = "Professional", Description = "Prestador de servicios médicos" },
             new Role { Name = "ScheduleManager", Description = "Administrador de agenda y disponibilidad" }
