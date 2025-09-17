@@ -153,8 +153,18 @@ try
 
     Console.WriteLine("Configuring pipeline...");
 
+    // Habilitar Swagger en todos los entornos para testing
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "AgendaSalud AuthService API v1");
+        c.RoutePrefix = string.Empty; // Swagger en la raíz /
+        c.DocumentTitle = "AgendaSalud AuthService API";
+        c.DefaultModelsExpandDepth(-1);
+    });
+
     // CONFIGURAR URLS SEGÚN EL ENTORNO
-    if (app.Environment.IsDevelopment())
+   /* if (app.Environment.IsDevelopment())
     {
         Console.WriteLine("Running in Development mode");
 
@@ -180,7 +190,7 @@ try
         var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
         app.Urls.Add($"http://0.0.0.0:{port}");
         Console.WriteLine($"Production port configured: {port}");
-    }
+    }*/
 
     app.UseCors("AllowAllOrigins");
 
