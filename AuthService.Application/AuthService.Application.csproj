@@ -13,8 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AgendaSalud.AuthService.Domain\AgendaSalud.AuthService.Domain.csproj" />
-    <ProjectReference Include="..\Infrastructure\AgendaSalud.AuthService.Infrastructure.csproj" />
+    <ProjectReference Include="..\AuthService.Domain\AuthService.Domain.csproj" />
+    <ProjectReference Include="..\AuthService.Infrastructure\AuthService.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
