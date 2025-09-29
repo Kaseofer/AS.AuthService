@@ -6,87 +6,122 @@ using System.Text;
 
 public class PasswordService : IPasswordService
 {
-    
     private readonly IGenericRepository<User> _userRepository;
     private readonly IGenericRepository<PasswordReset> _passwordResetRepository;
 
-    
-    public PasswordService(IGenericRepository<User> userRepository, IGenericRepository<PasswordReset> passwordResetRepository)
+    public PasswordService(
+        IGenericRepository<User> userRepository,
+        IGenericRepository<PasswordReset> passwordResetRepository)
     {
         _userRepository = userRepository;
         _passwordResetRepository = passwordResetRepository;
-
     }
-
 
     public async Task<bool> RequestResetAsync(PasswordResetRequestDto dto)
     {
         try
         {
-            var usuarios = await _userRepository.GetAllAsync();
+            var users = await _userRepository.QueryAsync(u => u.Email == dto.Email);
 
-            if (usuarios.Any())
+            if (!users.Any())
             {
-                throw new TaskCanceledException("RequestResetAsync: No se encontro el usuario");
+                // NO lanzar excepción para evitar enumeration attacks
+                // Simplemente retornar sin enviar email
+                return true;
             }
 
-            var user = usuarios.FirstOrDefault(u => u.Email == dto.Email);
+            var user = users.First();
 
-            if (user == null || !user.IsActive)
-                throw new TaskCanceledException("RequestResetAsync: Usuario No encontrado o Inactivo");
+            if (!user.IsActive)
+            {
+                return true; // Tampoco revelar que existe pero está inactivo
+            }
+
+            // Invalidar tokens anteriores
+            var oldResets = await _passwordResetRepository.QueryAsync(
+                r => r.UserId == user.Id && !r.Used && r.ExpiresAt > DateTime.UtcNow);
+
+            foreach (var oldReset in oldResets)
+            {
+                oldReset.Used = true;
+                await _passwordResetRepository.UpdateAsync(oldReset);
+            }
 
             var token = GenerateSecureToken();
+
             var reset = new PasswordReset
             {
+                Id = Guid.NewGuid(),
                 UserId = user.Id,
                 ResetToken = token,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(30)
+                ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+                Used = false,
+                CreatedAt = DateTime.UtcNow
             };
 
-            var rlt = await _passwordResetRepository.UpdateAsync(reset);
+            await _passwordResetRepository.AddAsync(reset);
 
-            if (!rlt)
-            {
-                throw new TaskCanceledException("RequestResetAsync: No se puedo registar reset password");
-            }
 
-            // Acá podrías enviar el token por email o loguearlo para pruebas
-            
-            Console.WriteLine($"Reset token for {user.Email}: {token}");
+            // Enviar email con link al FRONTEND
+            var resetUrl = $"https://app.agendasalud.com/reset-password?token={token}";
+
+            // TODO: Implementar envío de email
+            // await _emailService.SendPasswordResetEmail(user.Email, resetUrl, user.FullName);
+
+            Console.WriteLine($"🔑 Reset URL for {user.Email}:");
+            Console.WriteLine($"   {resetUrl}");
+            Console.WriteLine($"⏰ Expires at: {reset.ExpiresAt}");
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
-
-            throw;
+            Console.WriteLine($"Error in RequestResetAsync: {ex.Message}");
+            return true; // No revelar errores
         }
-        
     }
-
     public async Task<bool> ChangePasswordAsync(PasswordChangeDto dto)
     {
         try
         {
-            
-            var resets = await _passwordResetRepository.QueryAsync(r => r.ResetToken == dto.ResetToken && !r.Used, includeProperties: "User");
-            if (resets.Any())
+            var resets = await _passwordResetRepository.QueryAsync(
+                r => r.ResetToken == dto.ResetToken && !r.Used,
+                includeProperties: "User");
+
+            // ✅ CORREGIDO: Lógica invertida - debería ser !Any()
+            if (!resets.Any())
             {
-                throw new TaskCanceledException("ChangePasswordAsync: No hay Reset de password");
+                throw new Exception("Token de reset inválido o ya usado");
             }
 
-            var reset = resets.FirstOrDefault();
+            var reset = resets.First();
 
-            if (reset == null || reset.ExpiresAt < DateTime.UtcNow)
-                throw new TaskCanceledException("ChangePasswordAsync: Invalido o Expirado el Token");
+            // Verificar expiración
+            if (reset.ExpiresAt < DateTime.UtcNow)
+            {
+                throw new Exception("El token ha expirado");
+            }
 
+            // Verificar que el usuario existe y está activo
+            if (reset.User == null || !reset.User.IsActive)
+            {
+                throw new Exception("Usuario no encontrado o inactivo");
+            }
+
+            // Cambiar contraseña
             reset.User.PasswordHash = HashPassword(dto.NewPassword);
+            reset.User.PasswordChangedAt = DateTime.UtcNow;
+            reset.User.UpdatedAt = DateTime.UtcNow;
+            reset.User.ForcePasswordChange = false; // Ya cambió la contraseña
+
+            // ✅ CORREGIDO: Actualizar usuario también
+            await _userRepository.UpdateAsync(reset.User);
+
+            // Marcar token como usado
             reset.Used = true;
+            await _passwordResetRepository.UpdateAsync(reset);
 
-            var rst = await _passwordResetRepository.UpdateAsync(reset);
-
-            return rst;
-
+            return true;
         }
         catch
         {
@@ -97,11 +132,12 @@ public class PasswordService : IPasswordService
     private string GenerateSecureToken()
     {
         var bytes = RandomNumberGenerator.GetBytes(32);
-        return Convert.ToBase64String(bytes);
+        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
     }
 
     private string HashPassword(string password)
     {
+        // TODO: Cambiar a BCrypt en producción
         using var sha256 = SHA256.Create();
         var bytes = Encoding.UTF8.GetBytes(password);
         var hash = sha256.ComputeHash(bytes);

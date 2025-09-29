@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("auth")]
+[AllowAnonymous]
 public class AuthController : ControllerBase
 {
     private readonly IAuthenticationService _authService;
@@ -16,8 +17,10 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterUserDto dto)
     {
+
         var response = new ResponseApi<AuthResponseDto>();
 
         try
@@ -40,6 +43,7 @@ public class AuthController : ControllerBase
 
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginUserDto dto)
     {
         var response = new ResponseApi<AuthResponseDto>();
@@ -66,35 +70,49 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> GetCurrentUser()
     {
-        var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-
-        var user = await _authService.GetCurrentUserAsync(token);
-
-        if (user == null)
+        var response = new ResponseApi<AuthResponseDto>();
+        try
         {
-            return Unauthorized(new ResponseApi<object>
+            var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+
+            var user = await _authService.GetCurrentUserAsync(token);
+
+            if (user == null)
             {
-                IsSuccess = false,
-                Message = "Token inválido o usuario no encontrado",
-                ErrorCode = "INVALID_TOKEN"
-            });
-        }
+                response.IsSuccess = false;
+                response.Message = "Token inválido o usuario no encontrado";
+                response.ErrorCode = "INVALID_TOKEN";
 
-        return Ok(new ResponseApi<AuthResponseDto>
+                return Unauthorized(response);
+            }
+
+            response.IsSuccess = true;
+            response.Message = "Usuario autenticado";
+            response.Data = user;
+
+            return Ok(response);
+        }
+        catch (Exception ex)
         {
-            IsSuccess = true,
-            Message = "Usuario autenticado",
-            Data = user
-        });
+
+            response.IsSuccess = false;
+            response.Message = ex.Message;
+            response.ErrorCode = "LOGIN_ERROR";
+
+            // Logueo opcional en audit_log
+            return Unauthorized(response);
+        }
     }
 
     [HttpGet("validate-token")]
+    [AllowAnonymous]
     public async Task<IActionResult> ValidateToken()
     {
         var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
 
         var result = await _authService.ValidateTokenAsync(token);
 
+        
         if (result == null || !result.IsValid)
         {
             return Unauthorized(new ResponseApi<object>

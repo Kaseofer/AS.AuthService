@@ -64,8 +64,9 @@ namespace AgendaSalud.AuthService.Application.Services
                 var principal = tokenHandler.ValidateToken(token, validationParameters, out SecurityToken validatedToken);
                 return principal;
             }
-            catch
+            catch(Exception e)
             {
+                Console.WriteLine(e.Message);
                 return null;
             }
         }

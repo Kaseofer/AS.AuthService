@@ -8,6 +8,7 @@
         public string Role { get; set; } = null!;
         public string Token { get; set; } = null!;
         public DateTime ExpiresAt { get; set; }
+        public bool ForcePasswordChange { get; internal set; }
     }
 
 }

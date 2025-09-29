@@ -1,6 +1,8 @@
 ﻿using AgendaSalud.AuthService.Application.DTOs;
 using AgendaSalud.AuthService.Application.Interfaces;
 using AgendaSalud.AuthService.Domain.Entities;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -8,67 +10,80 @@ namespace AgendaSalud.AuthService.Application.Services
 {
     public class AuthenticationService : IAuthenticationService
     {
-        private readonly IGenericRepository<Role> _RoleRepository;
-        private readonly IGenericRepository<User> _UserRepository;
-
+        private readonly IGenericRepository<Role> _roleRepository;
+        private readonly IGenericRepository<User> _userRepository;
         private readonly IJwtGeneratorService _jwtGenerator;
 
-        public AuthenticationService(IGenericRepository<Role> roleRepository,IGenericRepository<User> userRepository, IJwtGeneratorService jwtGenerator)
-        {
-            
-            _RoleRepository = roleRepository;
-            _UserRepository = userRepository;
+        // Configuración de seguridad
+        private const int MAX_FAILED_ATTEMPTS = 5;
+        private const int LOCKOUT_MINUTES = 15;
 
+        public AuthenticationService(
+            IGenericRepository<Role> roleRepository,
+            IGenericRepository<User> userRepository,
+            IJwtGeneratorService jwtGenerator)
+        {
+            _roleRepository = roleRepository;
+            _userRepository = userRepository;
             _jwtGenerator = jwtGenerator;
         }
 
         public async Task<AuthResponseDto> RegisterAsync(RegisterUserDto dto)
         {
-        
             try
             {
-                //Buscando si el Role Existe
-                var listroles = await _RoleRepository.QueryAsync(r => r.Name.Equals(dto.RoleName));
+                // Buscar si el Role existe
+                var roles = await _roleRepository.QueryAsync(r => r.Name.Equals(dto.RoleName));
 
-                if (!listroles.Any())
+                if (!roles.Any())
                 {
-                    throw new TaskCanceledException("Role not found");
+                    throw new Exception($"Rol '{dto.RoleName}' no encontrado");
                 }
 
-                var role = listroles.First();
+                var role = roles.First();
 
+                // Verificar si ya está registrado
+                var existingUser = await _userRepository.GetAsync(u => u.Email == dto.Email);
 
-                //Checkeando si Ya esta registrado.
-                var Existe = await _UserRepository.GetAsync(u => u.Email == dto.Email);
-
-                if (Existe != null)
+                if (existingUser != null)
                 {
-                    throw new TaskCanceledException("Ya esta Registrado " + dto.Email);
+                    throw new Exception($"El email {dto.Email} ya está registrado");
                 }
 
+                // Crear nuevo usuario
                 var user = new User
                 {
+                    Id = Guid.NewGuid(),
                     Email = dto.Email,
                     PasswordHash = HashPassword(dto.Password),
                     FullName = dto.FullName,
-                    RoleId = role.Id
+                    RoleId = role.Id,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    PasswordChangedAt = DateTime.UtcNow,
+                    FailedAttempts = 0,
+                    IsLocked = false,
+                    ForcePasswordChange = false
                 };
-                
-                var nuevoUsuario = await _UserRepository.AddAsync(user);
 
-                if (nuevoUsuario == null)
+                var newUser = await _userRepository.AddAsync(user);
+
+                if (newUser == null)
                 {
-                    throw new TaskCanceledException("Error Creando el Usuario");
+                    throw new Exception("Error creando el usuario");
                 }
 
+                // Asignar el role al usuario para el token
+                newUser.Role = role;
+
                 // Generar token JWT
-                var token = _jwtGenerator.GenerateToken(user);
+                var token = _jwtGenerator.GenerateToken(newUser);
 
                 return new AuthResponseDto
                 {
-                    UserId = user.Id,
-                    Email = user.Email,
-                    FullName = user.FullName,
+                    UserId = newUser.Id,
+                    Email = newUser.Email,
+                    FullName = newUser.FullName,
                     Role = role.Name,
                     Token = token,
                     ExpiresAt = DateTime.UtcNow.AddHours(2)
@@ -76,27 +91,80 @@ namespace AgendaSalud.AuthService.Application.Services
             }
             catch
             {
-
                 throw;
             }
         }
 
         public async Task<AuthResponseDto> LoginAsync(LoginUserDto dto)
         {
-
             try
             {
-                var users = await _UserRepository.QueryAsync(u => u.Email == dto.Email, includeProperties: "Role");
+                var users = await _userRepository.QueryAsync(
+                    u => u.Email == dto.Email,
+                    includeProperties: "Role");
 
                 if (!users.Any())
                 {
-                    throw new TaskCanceledException("No encontro el usuario");
+                    throw new UnauthorizedAccessException("Credenciales inválidas");
                 }
 
                 var user = users.First();
 
-                if (user == null || !VerifyPassword(dto.Password, user.PasswordHash))
-                    throw new TaskCanceledException("Credenciales Invalidas");
+                // Verificar si el usuario está activo
+                if (!user.IsActive)
+                {
+                    throw new UnauthorizedAccessException("Usuario inactivo");
+                }
+
+                // Verificar si la cuenta está bloqueada
+                if (user.IsLocked)
+                {
+                    // Verificar si el período de bloqueo ya expiró
+                    if (user.NextAllowedLogin.HasValue && DateTime.UtcNow >= user.NextAllowedLogin.Value)
+                    {
+                        // Desbloquear cuenta
+                        user.IsLocked = false;
+                        user.FailedAttempts = 0;
+                        user.NextAllowedLogin = null;
+                        await _userRepository.UpdateAsync(user);
+                    }
+                    else
+                    {
+                        var remainingTime = user.NextAllowedLogin.HasValue
+                            ? (user.NextAllowedLogin.Value - DateTime.UtcNow).Minutes
+                            : LOCKOUT_MINUTES;
+                        throw new UnauthorizedAccessException(
+                            $"Cuenta bloqueada. Intente nuevamente en {remainingTime} minutos");
+                    }
+                }
+
+                // Verificar contraseña
+                if (!VerifyPassword(dto.Password, user.PasswordHash))
+                {
+                    // Incrementar intentos fallidos
+                    user.FailedAttempts++;
+                    user.LastFailedLogin = DateTime.UtcNow;
+
+                    // Bloquear si excede el máximo de intentos
+                    if (user.FailedAttempts >= MAX_FAILED_ATTEMPTS)
+                    {
+                        user.IsLocked = true;
+                        user.NextAllowedLogin = DateTime.UtcNow.AddMinutes(LOCKOUT_MINUTES);
+                    }
+
+                    await _userRepository.UpdateAsync(user);
+
+                    throw new UnauthorizedAccessException(
+                        $"Credenciales inválidas. Intentos restantes: {MAX_FAILED_ATTEMPTS - user.FailedAttempts}");
+                }
+
+                // Login exitoso - resetear intentos fallidos
+                user.FailedAttempts = 0;
+                user.LastSuccessfulLogin = DateTime.UtcNow;
+                user.LastFailedLogin = null;
+                user.IsLocked = false;
+                user.NextAllowedLogin = null;
+                await _userRepository.UpdateAsync(user);
 
                 var token = _jwtGenerator.GenerateToken(user);
 
@@ -107,29 +175,14 @@ namespace AgendaSalud.AuthService.Application.Services
                     FullName = user.FullName,
                     Role = user.Role.Name,
                     Token = token,
-                    ExpiresAt = DateTime.UtcNow.AddHours(2)
+                    ExpiresAt = DateTime.UtcNow.AddHours(2),
+                    ForcePasswordChange = user.ForcePasswordChange
                 };
             }
-            catch 
+            catch
             {
-
                 throw;
             }
-            
-        }
-
-        private string HashPassword(string password)
-        {
-            using var sha256 = SHA256.Create();
-            var bytes = Encoding.UTF8.GetBytes(password);
-            var hash = sha256.ComputeHash(bytes);
-            return Convert.ToBase64String(hash);
-        }
-
-        private bool VerifyPassword(string password, string storedHash)
-        {
-            var hashOfInput = HashPassword(password);
-            return hashOfInput == storedHash;
         }
 
         public async Task<AuthResponseDto> GetCurrentUserAsync(string token)
@@ -140,26 +193,31 @@ namespace AgendaSalud.AuthService.Application.Services
 
                 if (principal == null)
                 {
-                    throw new TaskCanceledException("Token inválido");
+                    throw new UnauthorizedAccessException("Token inválido");
                 }
 
-                // Extraer el UserId del token como Guid
-                var userIdClaim = principal.FindFirst("UserId")?.Value;
+                var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
                 if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 {
-                    throw new TaskCanceledException("Token no contiene información válida del usuario");
+                    throw new UnauthorizedAccessException("Token no contiene información válida del usuario");
                 }
 
-                // Buscar el usuario con Guid
-                var users = await _UserRepository.QueryAsync(u => u.Id == userId, includeProperties: "Role");
+                var users = await _userRepository.QueryAsync(
+                    u => u.Id == userId,
+                    includeProperties: "Role");
 
                 if (!users.Any())
                 {
-                    throw new TaskCanceledException("Usuario no encontrado");
+                    throw new UnauthorizedAccessException("Usuario no encontrado");
                 }
 
                 var user = users.First();
+
+                if (!user.IsActive || user.IsLocked)
+                {
+                    throw new UnauthorizedAccessException("Usuario inactivo o bloqueado");
+                }
 
                 return new AuthResponseDto
                 {
@@ -168,7 +226,8 @@ namespace AgendaSalud.AuthService.Application.Services
                     FullName = user.FullName,
                     Role = user.Role.Name,
                     Token = token,
-                    ExpiresAt = DateTime.UtcNow.AddHours(2)
+                    ExpiresAt = DateTime.UtcNow.AddHours(2),
+                    ForcePasswordChange = user.ForcePasswordChange
                 };
             }
             catch
@@ -176,11 +235,11 @@ namespace AgendaSalud.AuthService.Application.Services
                 throw;
             }
         }
+
         public async Task<TokenValidationDto> ValidateTokenAsync(string token)
         {
             try
             {
-                // Validar el token usando el servicio JWT
                 var principal = _jwtGenerator.ValidateToken(token);
 
                 if (principal == null)
@@ -188,32 +247,42 @@ namespace AgendaSalud.AuthService.Application.Services
                     return new TokenValidationDto
                     {
                         IsValid = false,
+                        UserId = Guid.Empty,
                         Email = string.Empty,
                         Role = string.Empty,
                         ExpiresAt = DateTime.MinValue
                     };
                 }
 
-                // Extraer información del token
-                var userIdClaim = principal.FindFirst("UserId")?.Value;
-                var emailClaim = principal.FindFirst("Email")?.Value;
-                var roleClaim = principal.FindFirst("Role")?.Value;
-                var expClaim = principal.FindFirst("exp")?.Value;
+                var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var emailClaim = principal.FindFirst(ClaimTypes.Email)?.Value
+                                ?? principal.FindFirst(JwtRegisteredClaimNames.Email)?.Value;
+                var roleClaim = principal.FindFirst(ClaimTypes.Role)?.Value;
+                var expClaim = principal.FindFirst(JwtRegisteredClaimNames.Exp)?.Value
+                              ?? principal.FindFirst("exp")?.Value;
 
-                // Convertir la fecha de expiración
                 DateTime expiresAt = DateTime.MinValue;
                 if (!string.IsNullOrEmpty(expClaim) && long.TryParse(expClaim, out long exp))
                 {
                     expiresAt = DateTimeOffset.FromUnixTimeSeconds(exp).DateTime;
                 }
 
-                // Verificar si el token ha expirado
                 bool isValid = expiresAt > DateTime.UtcNow;
+
+                // Verificar estado del usuario
+                if (isValid && Guid.TryParse(userIdClaim, out Guid userId))
+                {
+                    var user = await _userRepository.GetAsync(u => u.Id == userId);
+                    if (user == null || !user.IsActive || user.IsLocked)
+                    {
+                        isValid = false;
+                    }
+                }
 
                 return new TokenValidationDto
                 {
                     IsValid = isValid,
-                    UserId = Guid.TryParse(userIdClaim, out Guid userId) ? userId : Guid.Empty,
+                    UserId = Guid.TryParse(userIdClaim, out Guid parsedUserId) ? parsedUserId : Guid.Empty,
                     Email = emailClaim ?? string.Empty,
                     Role = roleClaim ?? string.Empty,
                     ExpiresAt = expiresAt
@@ -224,11 +293,27 @@ namespace AgendaSalud.AuthService.Application.Services
                 return new TokenValidationDto
                 {
                     IsValid = false,
+                    UserId = Guid.Empty,
                     Email = string.Empty,
                     Role = string.Empty,
                     ExpiresAt = DateTime.MinValue
                 };
             }
+        }
+
+        private string HashPassword(string password)
+        {
+            // TODO: Cambiar a BCrypt en producción
+            using var sha256 = SHA256.Create();
+            var bytes = Encoding.UTF8.GetBytes(password);
+            var hash = sha256.ComputeHash(bytes);
+            return Convert.ToBase64String(hash);
+        }
+
+        private bool VerifyPassword(string password, string storedHash)
+        {
+            var hashOfInput = HashPassword(password);
+            return hashOfInput == storedHash;
         }
     }
 }

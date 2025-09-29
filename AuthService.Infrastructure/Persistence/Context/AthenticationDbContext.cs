@@ -51,7 +51,7 @@ public class AuthenticationDbContext : DbContext
         // PasswordReset → corregido: tabla propia
         modelBuilder.Entity<PasswordReset>().ToTable("password_reset", "security");
         modelBuilder.Entity<PasswordReset>()
-            .Property(p => p.RequestedAt)
+            .Property(p => p.CreatedAt)
             .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
         // ExternalLogin → corregido: typo
