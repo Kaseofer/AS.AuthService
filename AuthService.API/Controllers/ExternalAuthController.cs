@@ -1,10 +1,12 @@
 ﻿using AgendaSalud.AuthService.Api.Common;
 using AgendaSalud.AuthService.Application.DTOs;
 using AgendaSalud.AuthService.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("external-auth")]
+[AllowAnonymous]
 public class ExternalAuthController : ControllerBase
 {
     private readonly IExternalAuthService _externalAuthService;
@@ -15,6 +17,7 @@ public class ExternalAuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> ExternalLogin([FromBody] ExternalLoginDto dto)
     {
         var response = new ResponseApi<AuthResponseDto>();

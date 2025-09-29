@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("auth")]
+[AllowAnonymous]
 public class AuthController : ControllerBase
 {
     private readonly IAuthenticationService _authService;
@@ -16,6 +17,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterUserDto dto)
     {
         var response = new ResponseApi<AuthResponseDto>();
@@ -40,6 +42,7 @@ public class AuthController : ControllerBase
 
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginUserDto dto)
     {
         var response = new ResponseApi<AuthResponseDto>();
@@ -89,6 +92,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("validate-token")]
+    [AllowAnonymous]
     public async Task<IActionResult> ValidateToken()
     {
         var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");

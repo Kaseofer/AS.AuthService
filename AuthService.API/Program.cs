@@ -1,168 +1,76 @@
-using AgendaSalud.AuthService.Application.IOC;
-using AgendaSalud.AuthService.Application.Settings;
+﻿using AgendaSalud.AuthService.Application.IOC;
 using AgendaSalud.AuthService.Infrastructure.IOC;
-using AgendaSalud.AuthService.Infrastructure.Logger;
-using AgendaSalud.AuthService.Infrastructure.Persistence.Context;
-using AgendaSalud.AuthService.Infrastructure.Persistence.Seeders;
+using AuthService.API.IOC;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 Console.WriteLine("=== DEBUGGING STARTUP ===");
+Console.WriteLine($"Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}");
 Console.WriteLine($"JWT Key configured: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Jwt__Key"))}");
 Console.WriteLine($"DB Connection configured: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ConnectionStrings__AgendaSaludAthentication"))}");
 Console.WriteLine($"Google Client ID configured: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Authentication__Google__ClientId"))}");
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+
 try
 {
     Console.WriteLine("Adding configuration...");
     builder.Configuration.AddEnvironmentVariables();
 
-    Console.WriteLine("Adding DbContext...");
-    builder.Services.AddDbContext<AuthenticationDbContext>(options =>
+    // Configurar URLs ANTES de build (solo para producción)
+    if (!builder.Environment.IsDevelopment())
     {
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__AgendaSaludAthentication")
-            ?? builder.Configuration.GetConnectionString("AgendaSaludAthentication");
-        Console.WriteLine($"Using connection string: {!string.IsNullOrEmpty(connectionString)}");
-        options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
-    });
+        var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+        builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+        Console.WriteLine($"Production: Configured for port {port}");
+    }
 
-    Console.WriteLine("Adding JWT settings...");
-    builder.Services.Configure<JwtSettings>(options =>
-    {
-        builder.Configuration.GetSection("Jwt").Bind(options);
-        // CORREGIR: Usar Jwt__Key en lugar de JWT_KEY
-        options.Key = Environment.GetEnvironmentVariable("Jwt__Key") ?? options.Key;
-    });
-
-    Console.WriteLine("Adding health checks...");
-    builder.Services.AddHealthChecks()
-        // Check b�sico de la aplicaci�n
-        .AddCheck("self", () => HealthCheckResult.Healthy("AuthService is running"))
-
-        // Check de base de datos
-        .AddDbContextCheck<AuthenticationDbContext>("database")
-
-        // Check de configuraci�n JWT
-        .AddCheck("jwt-configuration", (serviceProvider) =>
-        {
-            try
-            {
-                var jwtKey = Environment.GetEnvironmentVariable("Jwt__Key");
-                if (string.IsNullOrEmpty(jwtKey))
-                {
-                    return HealthCheckResult.Unhealthy("JWT Key not configured");
-                }
-                if (jwtKey.Length < 32)
-                {
-                    return HealthCheckResult.Degraded("JWT Key might be too short for security");
-                }
-                return HealthCheckResult.Healthy("JWT configuration is valid");
-            }
-            catch (Exception ex)
-            {
-                return HealthCheckResult.Unhealthy($"JWT configuration check failed: {ex.Message}");
-            }
-        })
-
-        // Check de configuraci�n Google OAuth
-        .AddCheck("google-oauth", (serviceProvider) =>
-        {
-            try
-            {
-                var clientId = Environment.GetEnvironmentVariable("Authentication__Google__ClientId");
-                var clientSecret = Environment.GetEnvironmentVariable("Authentication__Google__ClientSecret");
-
-                var issues = new List<string>();
-                if (string.IsNullOrEmpty(clientId)) issues.Add("ClientId");
-                if (string.IsNullOrEmpty(clientSecret)) issues.Add("ClientSecret");
-
-                if (issues.Any())
-                {
-                    return HealthCheckResult.Degraded($"Google OAuth partially configured. Missing: {string.Join(", ", issues)}");
-                }
-
-                return HealthCheckResult.Healthy("Google OAuth is properly configured");
-            }
-            catch (Exception ex)
-            {
-                return HealthCheckResult.Unhealthy($"Google OAuth check failed: {ex.Message}");
-            }
-        })
-
-        // Check de memoria
-        .AddCheck("memory", () =>
-        {
-            var allocated = GC.GetTotalMemory(false);
-            var data = new Dictionary<string, object>
-            {
-                ["allocated"] = allocated,
-                ["gen0"] = GC.CollectionCount(0),
-                ["gen1"] = GC.CollectionCount(1),
-                ["gen2"] = GC.CollectionCount(2)
-            };
-
-            var status = allocated < 200_000_000 ? HealthStatus.Healthy : HealthStatus.Degraded;
-            var message = $"Memory usage: {allocated / 1024 / 1024}MB";
-
-            return new HealthCheckResult(status, message, data: data);
-        });
-
-    Console.WriteLine("Adding basic services...");
-    builder.Services.AddControllers();
-    builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen();
-
-    Console.WriteLine("Adding CORS...");
-    builder.Services.AddCors(options =>
-    {
-        options.AddPolicy("AllowAllOrigins",
-            builder => builder.AllowAnyOrigin()
-                              .AllowAnyMethod()
-                              .AllowAnyHeader());
-    });
-
-    Console.WriteLine("Adding logger...");
-    builder.Services.AddSingleton(typeof(IAppLogger<>), typeof(FileLogger<>));
-
-    Console.WriteLine("Adding application services...");
-    builder.Services.AddInfrastructureLayerService();
+    Console.WriteLine("Registering services...");
+    builder.Services.AddInfrastructureLayerService(builder.Configuration);
     builder.Services.AddApplicationLayerService();
-
-    Console.WriteLine("Adding authentication...");
-    builder.Services.AddAuthentication()
-        .AddGoogle(options =>
-        {
-            options.ClientId = Environment.GetEnvironmentVariable("Authentication__Google__ClientId")
-                ?? builder.Configuration["Authentication:Google:ClientId"];
-            options.ClientSecret = Environment.GetEnvironmentVariable("Authentication__Google__ClientSecret")
-                ?? builder.Configuration["Authentication:Google:ClientSecret"];
-            options.CallbackPath = builder.Configuration["Authentication:Google:CallbackPath"];
-        });
+    builder.Services.AddPresentationLayerService(builder.Configuration);
 
     Console.WriteLine("Building app...");
     var app = builder.Build();
 
+
+    app.Use(async (context, next) =>
+    {
+        Console.WriteLine($"🌐 REQUEST: {context.Request.Method} {context.Request.Path}");
+        try
+        {
+            await next();
+            Console.WriteLine($"✅ RESPONSE: {context.Response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ MIDDLEWARE EXCEPTION: {ex.GetType().Name} - {ex.Message}");
+            throw;
+        }
+    });
+
+
     Console.WriteLine("Configuring pipeline...");
 
-    // SWAGGER CONFIGURATION - solo en Development
+    // SWAGGER CONFIGURATION (solo en Development)
     if (app.Environment.IsDevelopment())
     {
+        Console.WriteLine("Configuring Swagger for Development...");
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.RoutePrefix = string.Empty; // Swagger en la ra�z /
+            c.RoutePrefix = "swagger";
         });
     }
 
+    // MIDDLEWARE PIPELINE (orden importante)
     app.UseCors("AllowAllOrigins");
 
-    // Comentar HTTPS redirect para Railway
+    // HTTPS redirect comentado para Railway
     // app.UseHttpsRedirection();
 
-    app.UseAuthentication();
+     app.UseAuthentication();
     app.UseAuthorization();
 
     // HEALTH CHECK ENDPOINTS
@@ -176,6 +84,7 @@ try
                 status = report.Status.ToString(),
                 timestamp = DateTime.UtcNow,
                 service = "AgendaSalud.AuthService",
+                environment = app.Environment.EnvironmentName,
                 duration = report.TotalDuration.TotalMilliseconds,
                 checks = report.Entries.ToDictionary(
                     kvp => kvp.Key,
@@ -183,39 +92,60 @@ try
                     {
                         status = kvp.Value.Status.ToString(),
                         duration = kvp.Value.Duration.TotalMilliseconds,
-                        description = kvp.Value.Description
+                        description = kvp.Value.Description,
+                        data = kvp.Value.Data
                     }
                 )
             };
-            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
+            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            }));
         }
     });
-
+    
     // Endpoint simple para Railway health check
     app.MapGet("/health/live", () => Results.Ok(new
     {
         status = "alive",
         timestamp = DateTime.UtcNow,
-        service = "AuthService"
+        service = "AuthService",
+        environment = app.Environment.EnvironmentName
     }));
-
+    
+    // CONTROLLERS
     app.MapControllers();
 
-    // Configurar puerto para Railway
-    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-    app.Urls.Add($"http://0.0.0.0:{port}");
+    // SEEDING (si lo tienes)
+    if (app.Environment.IsDevelopment())
+    {
+        Console.WriteLine("Running development seeding...");
+        // Tu código de seeding aquí si lo tienes
+    }
 
-    Console.WriteLine("Starting seeding...");
-    // Seeding code aqu� si lo tienes...
+    Console.WriteLine($"🚀 Starting AuthService in {app.Environment.EnvironmentName} mode...");
 
-    Console.WriteLine($"Starting AuthService on port {port}...");
+    if (app.Environment.IsDevelopment())
+    {
+        Console.WriteLine("📖 Swagger available at: /swagger");
+        Console.WriteLine("❤️ Health checks available at: /health");
+    }
 
     app.Run();
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"CRITICAL ERROR: {ex.GetType().Name}");
-    try { Console.WriteLine($"Message: {ex.Message}"); } catch { }
-    try { Console.WriteLine($"Inner: {ex.InnerException?.Message}"); } catch { }
+    Console.WriteLine("❌ CRITICAL ERROR DURING STARTUP:");
+    Console.WriteLine($"Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+    }
+
+    Console.WriteLine("Stack Trace:");
+    Console.WriteLine(ex.StackTrace);
+
     throw;
 }

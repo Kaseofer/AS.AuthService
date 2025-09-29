@@ -1,6 +1,8 @@
 ﻿using AgendaSalud.AuthService.Application.DTOs;
 using AgendaSalud.AuthService.Application.Interfaces;
 using AgendaSalud.AuthService.Domain.Entities;
+using Microsoft.IdentityModel.JsonWebTokens;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -144,7 +146,7 @@ namespace AgendaSalud.AuthService.Application.Services
                 }
 
                 // Extraer el UserId del token como Guid
-                var userIdClaim = principal.FindFirst("UserId")?.Value;
+                var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
                 if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 {
