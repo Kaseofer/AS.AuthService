@@ -17,8 +17,8 @@ namespace AgendaSalud.AuthService.Infrastructure.IOC
             Console.WriteLine("Adding DbContext...");
             services.AddDbContext<AuthenticationDbContext>(options =>
             {
-                var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__AgendaSaludAthentication")
-                    ?? configuration.GetConnectionString("AgendaSaludAthentication");
+                var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+                    ?? configuration.GetConnectionString("DefaultConnection");
                 Console.WriteLine($"Using connection string: {!string.IsNullOrEmpty(connectionString)}");
                 options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
             });
