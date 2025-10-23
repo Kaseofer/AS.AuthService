@@ -3,7 +3,7 @@
     "Name": "New Profile",
     "Projects": [
       {
-        "Path": "AuthService.API\\AuthService.API.csproj",
+        "Path": "AuthService.API\\API.csproj",
         "Action": "Start",
         "DebugTarget": "http"
       }

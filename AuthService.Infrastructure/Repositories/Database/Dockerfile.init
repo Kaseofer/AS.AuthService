@@ -1,0 +1,31 @@
+# ============================================
+# DOCKERFILE PARA MIGRACIONES - AUTH SERVICE
+# ============================================
+# Proyecto: Sistema de Autenticación y Seguridad
+# Microservicio: AuthService (Security)
+# Propósito: Ejecutar scripts SQL de inicialización
+# ============================================
+
+FROM postgres:17-alpine
+
+# Instalar cliente de PostgreSQL
+RUN apk add --no-cache postgresql-client
+
+# Crear directorio de trabajo
+WORKDIR /scripts
+
+# Copiar scripts SQL en orden
+COPY Infrastructure/Database/Scripts/001_CreateTables.sql ./001_CreateTables.sql
+COPY Infrastructure/Database/Scripts/002_CreateConstraints.sql ./002_CreateConstraints.sql
+COPY Infrastructure/Database/Scripts/003_CreateIndexes.sql ./003_CreateIndexes.sql
+COPY Infrastructure/Database/Scripts/004_SeedData.sql ./004_SeedData.sql
+COPY Infrastructure/Database/Scripts/005_SeedTestData.sql ./005_SeedTestData.sql
+
+# Copiar script de ejecución
+COPY Infrastructure/Database/run-migrations.sh ./run-migrations.sh
+
+# Dar permisos de ejecución
+RUN chmod +x ./run-migrations.sh
+
+# Ejecutar migraciones
+ENTRYPOINT ["./run-migrations.sh"]
